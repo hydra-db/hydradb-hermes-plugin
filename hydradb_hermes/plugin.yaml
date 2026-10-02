@@ -1,10 +1,10 @@
 name: hydradb
 version: 1.0.0
-description: "HydraDB long-term memory for Hermes Agent: prompt-time recall (prefetch) and non-blocking turn capture (sync_turn) over the public HydraDB API."
-hooks:
-  - prefetch
-  - sync_turn
+description: "HydraDB long-term memory for Hermes Agent: prompt-time recall (prefetch) and non-blocking turn capture (sync_turn) over the public HydraDB API. Registered as a MemoryProvider; no general tools or lifecycle hooks."
 requires_hermes: ">=0.21.5"
+provides_tools: []
+provides_hooks: []
+provides_middleware: []
 requires_env:
   - HYDRADB_API_KEY
   - HYDRADB_TENANT_ID
