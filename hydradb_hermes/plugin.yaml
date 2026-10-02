@@ -4,3 +4,7 @@ description: "HydraDB long-term memory for Hermes Agent: prompt-time recall (pre
 hooks:
   - prefetch
   - sync_turn
+requires_hermes: ">=0.21.5"
+requires_env:
+  - HYDRADB_API_KEY
+  - HYDRADB_TENANT_ID
