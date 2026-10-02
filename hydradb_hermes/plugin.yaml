@@ -1,0 +1,6 @@
+name: hydradb
+version: 1.0.0
+description: "HydraDB long-term memory for Hermes Agent: prompt-time recall (prefetch) and non-blocking turn capture (sync_turn) over the public HydraDB API."
+hooks:
+  - prefetch
+  - sync_turn

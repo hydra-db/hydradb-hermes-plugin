@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hydradb": {
+      "url": "https://mcp.hydradb.com",
+      "headers": { "Authorization": "Bearer ${HYDRADB_API_KEY}" }
+    }
+  }
+}
