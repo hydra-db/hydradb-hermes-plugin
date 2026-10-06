@@ -45,16 +45,14 @@ class HydraDBMemoryProvider(_BaseMemoryProvider):
             )
 
     def get_config_schema(self):
+        # Hermes reads the `env_var` key to persist each value into .env during
+        # `hermes memory setup`; the provider then resolves them from the
+        # environment on start (see is_available/initialize).
         return [
-            {"key": "api_key", "env": "HYDRADB_API_KEY", "secret": True, "required": True},
-            {"key": "tenant_id", "env": "HYDRADB_TENANT_ID", "required": True},
-            {"key": "sub_tenant_id", "env": "HYDRADB_SUB_TENANT_ID", "required": False},
+            {"key": "api_key", "env_var": "HYDRADB_API_KEY", "secret": True, "required": True},
+            {"key": "tenant_id", "env_var": "HYDRADB_TENANT_ID", "required": True},
+            {"key": "sub_tenant_id", "env_var": "HYDRADB_SUB_TENANT_ID", "required": False},
         ]
-
-    def save_config(self, values: dict, hermes_home: str) -> None:
-        for key in ("tenant_id", "sub_tenant_id", "base_url"):
-            if values.get(key):
-                os.environ.setdefault(f"HYDRADB_{key.upper()}", str(values[key]))
 
     def get_tool_schemas(self):
         return []
