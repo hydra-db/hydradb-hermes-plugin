@@ -7,4 +7,4 @@ provides_hooks: []
 provides_middleware: []
 requires_env:
   - HYDRADB_API_KEY
-  - HYDRADB_TENANT_ID
+  - HYDRADB_DATABASE

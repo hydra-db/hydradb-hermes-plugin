@@ -21,8 +21,8 @@ Run `hermes memory setup` and pick `hydradb`, or set the environment directly:
 
 ```bash
 export HYDRADB_API_KEY="your-api-key"
-export HYDRADB_TENANT_ID="your-tenant-id"
-# optional: HYDRADB_SUB_TENANT_ID, HYDRADB_BASE_URL
+export HYDRADB_DATABASE="your-tenant-id"
+# optional: HYDRADB_COLLECTION, HYDRADB_BASE_URL
 ```
 
 Then enable it:
@@ -37,11 +37,11 @@ memory:
 | Variable | Required | Purpose |
 |---|---|---|
 | `HYDRADB_API_KEY` | yes | HydraDB API key (secret) |
-| `HYDRADB_TENANT_ID` | yes | database/tenant to read and write |
-| `HYDRADB_SUB_TENANT_ID` | no | sub-tenant scope |
+| `HYDRADB_DATABASE` | yes | database/tenant to read and write |
+| `HYDRADB_COLLECTION` | no | sub-tenant scope |
 | `HYDRADB_BASE_URL` | no | defaults to `https://api.hydradb.com` |
 
-The provider reports unavailable until `HYDRADB_API_KEY` and `HYDRADB_TENANT_ID`
+The provider reports unavailable until `HYDRADB_API_KEY` and `HYDRADB_DATABASE`
 are both set.
 
 ## License

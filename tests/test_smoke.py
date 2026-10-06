@@ -67,11 +67,11 @@ def test_sync_turn_ingests_non_blocking():
 
 def test_is_available_requires_key_and_tenant(monkeypatch):
     monkeypatch.delenv("HYDRADB_API_KEY", raising=False)
-    monkeypatch.delenv("HYDRADB_TENANT_ID", raising=False)
+    monkeypatch.delenv("HYDRADB_DATABASE", raising=False)
     assert _provider().is_available() is False
     monkeypatch.setenv("HYDRADB_API_KEY", "x")
     assert _provider().is_available() is False
-    monkeypatch.setenv("HYDRADB_TENANT_ID", "t")
+    monkeypatch.setenv("HYDRADB_DATABASE", "t")
     assert _provider().is_available() is True
 
 
