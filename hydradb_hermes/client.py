@@ -232,20 +232,27 @@ def _to_chunk(raw: dict[str, Any]) -> HydraChunk:
 
 
 def _extract_text(value: Any) -> str:
-    """Unwrap a HydraDB content envelope to its prose, else return as-is."""
+    """Unwrap a HydraDB content envelope to its prose, else return as-is.
+
+    Recall may return the stored envelope JSON followed by trailing graph
+    enrichment (``"\\n\\nExtra context: ..."``). The envelope is decoded from the
+    front with ``raw_decode`` so the trailing text no longer defeats the unwrap;
+    the prose is returned with any enrichment appended and the JSON dropped.
+    """
     if isinstance(value, dict):
         return _prose_from_envelope(value) or json.dumps(value)
     if not isinstance(value, str):
         return str(value)
     stripped = value.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
+    if stripped.startswith("{"):
         try:
-            obj = json.loads(stripped)
+            obj, end = json.JSONDecoder().raw_decode(stripped)
         except ValueError:
             return value
         prose = _prose_from_envelope(obj)
         if prose is not None:
-            return prose
+            trailing = stripped[end:].strip()
+            return f"{prose}\n\n{trailing}" if trailing else prose
     return value
 
 

@@ -79,3 +79,17 @@ def test_name_and_schema():
     p = _provider()
     assert p.name == "hydradb"
     assert any(f["key"] == "api_key" for f in p.get_config_schema())
+
+
+def test_extract_text_unwraps_envelope_with_trailing_context():
+    """Recall text may be an envelope JSON plus trailing 'Extra context'."""
+    from hydradb_hermes.client import _extract_text
+
+    raw = (
+        '{"content": {"text": "Ship Friday."}, "document_metadata": {"a": "b"}}'
+        "\n\nExtra context: The beta ships Friday."
+    )
+    out = _extract_text(raw)
+    assert out.startswith("Ship Friday.")
+    assert "Extra context:" in out
+    assert "document_metadata" not in out
