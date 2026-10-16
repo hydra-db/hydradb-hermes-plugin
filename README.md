@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/hydra-db/hydradb-hermes-plugin/main/assets/icon.png" width="96" alt="HydraDB" />
+</p>
+
 # HydraDB for Hermes Agent
 
 A [Hermes Agent](https://hermes-agent.nousresearch.com/docs/) **memory provider**
