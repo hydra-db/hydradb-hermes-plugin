@@ -39,6 +39,24 @@ class HydraChunk:
     source_title: str = ""
     id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    chunk_metadata: Any = None
+
+
+@dataclass
+class HydraQueryResult:
+    """Structured query result; data and meta retain the complete wire objects."""
+
+    chunks: list[HydraChunk]
+    data: dict[str, Any]
+    meta: dict[str, Any]
+
+    @property
+    def tabular_data(self) -> Any:
+        return self.data.get("tabular_data")
+
+    @property
+    def warnings(self) -> Any:
+        return self.meta.get("warnings", [])
 
 
 class HydraDBClient:
@@ -69,6 +87,9 @@ class HydraDBClient:
         return {"Authorization": f"Bearer {self.api_key}"}
 
     def _unwrap(self, resp: requests.Response) -> dict[str, Any]:
+        return self._unwrap_envelope(resp).get("data") or {}
+
+    def _unwrap_envelope(self, resp: requests.Response) -> dict[str, Any]:
         try:
             body = resp.json()
         except ValueError:
@@ -78,7 +99,7 @@ class HydraDBClient:
             raise HydraDBError(
                 f"{err.get('code', 'ERROR')}: {err.get('message', resp.text[:200])}"
             )
-        return body.get("data") or {}
+        return body
 
     def query(
         self,
@@ -89,8 +110,28 @@ class HydraDBClient:
         alpha: float = 0.8,
         recency_bias: float = 0.0,
         graph_context: bool = True,
+        include_table_sql: bool | None = None,
+        table_limit: int | None = None,
     ) -> list[HydraChunk]:
-        """Hybrid recall. ``kind`` is ``"memory"`` or ``"knowledge"``."""
+        """Hybrid recall, returning chunks as in previous versions."""
+        return self.query_result(
+            query, kind, mode, max_results, alpha, recency_bias, graph_context,
+            include_table_sql, table_limit,
+        ).chunks
+
+    def query_result(
+        self,
+        query: str,
+        kind: str = "memory",
+        mode: str = "fast",
+        max_results: int = 6,
+        alpha: float = 0.8,
+        recency_bias: float = 0.0,
+        graph_context: bool = True,
+        include_table_sql: bool | None = None,
+        table_limit: int | None = None,
+    ) -> HydraQueryResult:
+        """Recall with access to all response data and envelope metadata."""
         payload = {
             "tenant_id": self.tenant_id,
             "sub_tenant_id": self.sub_tenant_id,
@@ -102,14 +143,23 @@ class HydraDBClient:
             "recency_bias": recency_bias,
             "graph_context": graph_context,
         }
+        if include_table_sql is not None:
+            payload["include_table_sql"] = include_table_sql
+        if table_limit is not None:
+            payload["table_limit"] = table_limit
         resp = self._session.post(
             f"{self.base_url}/query",
             headers={**self._auth_headers, "Content-Type": "application/json"},
             json=payload,
             timeout=self.timeout,
         )
-        data = self._unwrap(resp)
-        return [_to_chunk(c) for c in (data.get("chunks") or [])]
+        body = self._unwrap_envelope(resp)
+        data = body.get("data") or {}
+        return HydraQueryResult(
+            chunks=[_to_chunk(c) for c in (data.get("chunks") or [])],
+            data=data,
+            meta=body.get("meta") or {},
+        )
 
     def recall_prompt(
         self,
@@ -228,6 +278,7 @@ def _to_chunk(raw: dict[str, Any]) -> HydraChunk:
         source_title=raw.get("source_title") or raw.get("title") or "",
         id=raw.get("chunk_uuid") or raw.get("id") or "",
         metadata=raw.get("metadata") or {},
+        chunk_metadata=raw.get("chunk_metadata"),
     )
 
 
