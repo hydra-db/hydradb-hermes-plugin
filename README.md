@@ -75,13 +75,11 @@ of chunks. Pass optional `include_table_sql` and `table_limit` to either
 
 ```python
 result = client.query_result("What is the total?", include_table_sql=True, table_limit=10)
-chunks = result.chunks  # each chunk also exposes chunk_metadata
+prompt = result.llm_prompt
+chunks = result.chunks  # each chunk exposes metadata and additional_metadata
 table = result.tabular_data
-warnings = result.warnings  # includes any affected collections
-temporal_facts = result.data.get("temporal_facts", [])  # observed_at is Unix seconds
 graph = result.data.get("graph")  # graph data and provenance, when returned
 ```
 
-`result.data` and `result.meta` preserve the response objects, including
-temporal duration, graph context and future fields. Use them when the API
+`result.data` and `result.meta` preserve the response objects, including graph context and future fields. Use them when the API
 returns additional structured information; no extra request is made.

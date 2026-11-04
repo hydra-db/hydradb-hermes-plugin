@@ -10,15 +10,14 @@ from hydradb_hermes.client import HydraDBClient
 @responses.activate
 def test_structured_query_preserves_response_and_options():
     data = {
+        "llm_prompt": "Context for the answer",
         "chunks": [{"chunk_content": "hello", "metadata": {"old": 1},
-                    "chunk_metadata": {"page": 2}}],
+                    "additional_metadata": {"page": 2}}],
         "tabular_data": {"status": "ok", "records": [{"value": 1}], "sql": "select 1"},
-        "temporal_facts": [{"observed_at": 1767225600}],
         "graph": {"entities": [{"database": "db", "collection": "col",
                                   "source_id": "s", "read_status": "complete"}]},
     }
-    meta = {"warnings": [{"code": "PARTIAL", "message": "partial",
-                           "collections": ["col"]}]}
+    meta = {"request_id": "request-1"}
     responses.add(responses.POST, "https://api.hydradb.com/query",
                   json={"success": True, "data": data, "meta": meta})
     client = HydraDBClient("key", "tenant")
@@ -27,12 +26,11 @@ def test_structured_query_preserves_response_and_options():
     assert payload["include_table_sql"] is False
     assert payload["table_limit"] == 0
     assert result.chunks[0].metadata == {"old": 1}
-    assert result.chunks[0].chunk_metadata == {"page": 2}
+    assert result.llm_prompt == "Context for the answer"
+    assert result.chunks[0].additional_metadata == {"page": 2}
     assert result.data == data
     assert result.meta == meta
     assert result.tabular_data == data["tabular_data"]
-    assert result.warnings == meta["warnings"]
-    assert result.data["temporal_facts"][0]["observed_at"] == 1767225600
     assert result.data["graph"]["entities"][0]["read_status"] == "complete"
 
 
@@ -48,11 +46,12 @@ def test_existing_query_keeps_list_contract_and_omits_unspecified_options():
 
 
 @responses.activate
-def test_list_query_accepts_table_options_and_chunk_metadata():
+def test_list_query_accepts_table_options_and_live_metadata():
     responses.add(responses.POST, "https://api.hydradb.com/query",
-                  json={"success": True, "data": {"chunks": [{"text": "hello", "chunk_metadata": {"x": 1}}]}})
+                  json={"success": True, "data": {"chunks": [{"text": "hello", "metadata": {"source": "test"}, "additional_metadata": {"x": 1}}]}})
     client = HydraDBClient("key", "tenant")
     chunks = client.query("question", include_table_sql=True, table_limit=3)
     payload = json.loads(responses.calls[0].request.body)
     assert payload["include_table_sql"] is True and payload["table_limit"] == 3
-    assert chunks[0].chunk_metadata == {"x": 1}
+    assert chunks[0].metadata == {"source": "test"}
+    assert chunks[0].additional_metadata == {"x": 1}

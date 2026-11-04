@@ -39,7 +39,7 @@ class HydraChunk:
     source_title: str = ""
     id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
-    chunk_metadata: Any = None
+    additional_metadata: Any = None
 
 
 @dataclass
@@ -55,8 +55,8 @@ class HydraQueryResult:
         return self.data.get("tabular_data")
 
     @property
-    def warnings(self) -> Any:
-        return self.meta.get("warnings", [])
+    def llm_prompt(self) -> str:
+        return self.data.get("llm_prompt", "")
 
 
 class HydraDBClient:
@@ -278,7 +278,7 @@ def _to_chunk(raw: dict[str, Any]) -> HydraChunk:
         source_title=raw.get("source_title") or raw.get("title") or "",
         id=raw.get("chunk_uuid") or raw.get("id") or "",
         metadata=raw.get("metadata") or {},
-        chunk_metadata=raw.get("chunk_metadata"),
+        additional_metadata=raw.get("additional_metadata"),
     )
 
 
