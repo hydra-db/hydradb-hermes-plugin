@@ -95,7 +95,7 @@ class HydraDBClient:
             "tenant_id": self.tenant_id,
             "sub_tenant_id": self.sub_tenant_id,
             "query": query,
-            "kind": kind,
+            "type": kind,
             "mode": mode,
             "max_results": max_results,
             "alpha": alpha,
@@ -128,7 +128,7 @@ class HydraDBClient:
             "tenant_id": self.tenant_id,
             "sub_tenant_id": self.sub_tenant_id,
             "query": query,
-            "kind": kind,
+            "type": kind,
             "mode": mode,
             "max_results": max_results,
         }
