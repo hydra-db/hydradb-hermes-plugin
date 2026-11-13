@@ -66,7 +66,7 @@ class HydraDBClient:
 
     @property
     def _auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.api_key}"}
+        return {"Authorization": f"Bearer {self.api_key}", "API-Version": "2"}
 
     def _unwrap(self, resp: requests.Response) -> dict[str, Any]:
         try:
@@ -156,7 +156,7 @@ class HydraDBClient:
         fields = {
             "tenant_id": (None, self.tenant_id),
             "sub_tenant_id": (None, self.sub_tenant_id),
-            "kind": (None, "knowledge"),
+            "type": (None, "knowledge"),
             "app_knowledge": (None, json.dumps(list(items))),
         }
         resp = self._session.post(
@@ -204,7 +204,7 @@ class HydraDBClient:
                 "tenant_id": self.tenant_id,
                 "sub_tenant_id": self.sub_tenant_id,
                 "ids": ids,
-                "kind": kind,
+                "type": kind,
             },
             timeout=self.timeout,
         )
