@@ -1,5 +1,6 @@
 """Offline tests for the HydraDB Hermes memory provider (no Hermes/network)."""
 
+import json
 import time
 
 import responses
@@ -29,6 +30,10 @@ def test_prefetch_prefers_server_llm_prompt():
     )
     out = _provider().prefetch("mascot", session_id="s1")
     assert "mascot is Hydrabyte" in out
+
+    sent = json.loads(responses.calls[0].request.body)
+    assert "kind" not in sent
+    assert sent["type"] in ("memory", "knowledge")
 
 
 @responses.activate
