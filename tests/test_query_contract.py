@@ -1,0 +1,57 @@
+"""Offline query request and response contract checks."""
+
+import json
+
+import responses
+
+from hydradb_hermes.client import HydraDBClient
+
+
+@responses.activate
+def test_structured_query_preserves_response_and_options():
+    data = {
+        "llm_prompt": "Context for the answer",
+        "chunks": [{"chunk_content": "hello", "metadata": {"old": 1},
+                    "additional_metadata": {"page": 2}}],
+        "tabular_data": {"status": "ok", "records": [{"value": 1}], "sql": "select 1"},
+        "graph": {"entities": [{"database": "db", "collection": "col",
+                                  "source_id": "s", "read_status": "complete"}]},
+    }
+    meta = {"request_id": "request-1"}
+    responses.add(responses.POST, "https://api.hydradb.com/query",
+                  json={"success": True, "data": data, "meta": meta})
+    client = HydraDBClient("key", "tenant")
+    result = client.query_result("question", include_table_sql=False, table_limit=0)
+    payload = json.loads(responses.calls[0].request.body)
+    assert payload["include_table_sql"] is False
+    assert payload["table_limit"] == 0
+    assert result.chunks[0].metadata == {"old": 1}
+    assert result.llm_prompt == "Context for the answer"
+    assert result.chunks[0].additional_metadata == {"page": 2}
+    assert result.data == data
+    assert result.meta == meta
+    assert result.tabular_data == data["tabular_data"]
+    assert result.data["graph"]["entities"][0]["read_status"] == "complete"
+
+
+@responses.activate
+def test_existing_query_keeps_list_contract_and_omits_unspecified_options():
+    responses.add(responses.POST, "https://api.hydradb.com/query",
+                  json={"success": True, "data": {"chunks": [{"text": "hello"}]}})
+    client = HydraDBClient("key", "tenant")
+    chunks = client.query("question")
+    payload = json.loads(responses.calls[0].request.body)
+    assert "include_table_sql" not in payload and "table_limit" not in payload
+    assert isinstance(chunks, list) and chunks[0].text == "hello"
+
+
+@responses.activate
+def test_list_query_accepts_table_options_and_live_metadata():
+    responses.add(responses.POST, "https://api.hydradb.com/query",
+                  json={"success": True, "data": {"chunks": [{"text": "hello", "metadata": {"source": "test"}, "additional_metadata": {"x": 1}}]}})
+    client = HydraDBClient("key", "tenant")
+    chunks = client.query("question", include_table_sql=True, table_limit=3)
+    payload = json.loads(responses.calls[0].request.body)
+    assert payload["include_table_sql"] is True and payload["table_limit"] == 3
+    assert chunks[0].metadata == {"source": "test"}
+    assert chunks[0].additional_metadata == {"x": 1}
