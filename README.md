@@ -50,6 +50,27 @@ export HYDRADB_API_KEY="your-api-key"
 export HYDRADB_DATABASE="your-tenant-id"
 ```
 
+## Unified rollout preparation
+
+Unified support is not enabled in production. Keep the default split layout
+until your database's production rollout is confirmed. Then explicitly set
+`HYDRADB_LAYOUT=unified` (or pass `layout="unified"` to `HydraDBClient`).
+Only `split` and `unified` are accepted; failures never trigger a layout retry.
+
+Unified writes send JSON `context[]`, with conversation turns as
+`{role, content}`. Text-item IDs become `context_id`, `infer` becomes `enrich`,
+`metadata` becomes `attributes`, and `additional_metadata` becomes
+`custom_attributes`. The raw `add_knowledge` adapter supports text-only items
+with those fields and `title`; it rejects unsupported fields instead of losing
+them. Split ingestion remains unchanged.
+
+`query()` still returns chunks; `query_result()` additionally retains the complete
+response in `.data` and envelope metadata in `.meta`, including root `graph[]`,
+`forceful_relations[]`, `llm_prompt`, and `tabular_data`. Unified chunks expose
+their chunk ID as `.id` and their separate context ID as `.context_id`, alongside
+`.enrichment` and `.received_at`; source titles/metadata are not fabricated.
+The provider injects a supplied `llm_prompt` verbatim and persists turns off-thread.
+
 ## Test
 
 ```bash

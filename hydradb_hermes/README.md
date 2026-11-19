@@ -40,6 +40,7 @@ memory:
 | `HYDRADB_DATABASE` | yes | database/tenant to read and write |
 | `HYDRADB_COLLECTION` | no | sub-tenant scope |
 | `HYDRADB_BASE_URL` | no | defaults to `https://api.hydradb.com` |
+| `HYDRADB_LAYOUT` | no | `split` (default) or `unified`; use unified only after production rollout is confirmed |
 
 The provider reports unavailable until `HYDRADB_API_KEY` and `HYDRADB_DATABASE`
 are both set.

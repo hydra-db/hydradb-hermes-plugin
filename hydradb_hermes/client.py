@@ -3,12 +3,12 @@
 Wraps the three public endpoints these integrations need:
 
 * ``POST /query``          - hybrid recall over memory or knowledge (JSON body)
-* ``POST /context/ingest`` - write knowledge (multipart ``app_knowledge``)
+* ``POST /context/ingest`` - write split knowledge or unified JSON context
 * ``DELETE /context``      - remove context by id (JSON body)
 
-Ingestion uses the public knowledge path (``app_knowledge``); the memory-family
-write route is not exposed on the public API, so text/conversations are stored
-as knowledge. Auth is ``Authorization: Bearer <api_key>``. Responses are the
+Split ingestion uses ``app_knowledge``. Explicit ``layout="unified"`` uses
+JSON ``context[]`` instead, without a memory/knowledge selector.
+Auth is ``Authorization: Bearer <api_key>``. Responses are the
 standard ``{"success", "data", "error", "meta"}`` envelope; recall results live
 in ``data.chunks``. Chunks are normalised so callers do not depend on the wire
 shape.
@@ -39,6 +39,26 @@ class HydraChunk:
     source_title: str = ""
     id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    context_id: str = ""
+    enrichment: str = ""
+    received_at: str = ""
+
+
+@dataclass
+class HydraQueryResult:
+    """Query chunks alongside complete response data and envelope metadata."""
+
+    chunks: list[HydraChunk]
+    data: dict[str, Any]
+    meta: dict[str, Any]
+
+    @property
+    def tabular_data(self) -> Any:
+        return self.data.get("tabular_data")
+
+    @property
+    def llm_prompt(self) -> str:
+        return self.data.get("llm_prompt", "")
 
 
 class HydraDBClient:
@@ -52,11 +72,15 @@ class HydraDBClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = 15.0,
         session: requests.Session | None = None,
+        layout: str = "split",
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
         if not tenant_id:
             raise ValueError("tenant_id is required")
+        if layout not in ("split", "unified"):
+            raise ValueError("layout must be split or unified")
+        self.layout = layout
         self.api_key = api_key
         self.tenant_id = tenant_id
         self.sub_tenant_id = sub_tenant_id
@@ -68,7 +92,16 @@ class HydraDBClient:
     def _auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "API-Version": "2"}
 
+    @property
+    def _scope(self) -> dict[str, str]:
+        if self.layout == "unified":
+            return {"database": self.tenant_id, "collection": self.sub_tenant_id}
+        return {"tenant_id": self.tenant_id, "sub_tenant_id": self.sub_tenant_id}
+
     def _unwrap(self, resp: requests.Response) -> dict[str, Any]:
+        return self._unwrap_envelope(resp).get("data") or {}
+
+    def _unwrap_envelope(self, resp: requests.Response) -> dict[str, Any]:
         try:
             body = resp.json()
         except ValueError:
@@ -78,7 +111,7 @@ class HydraDBClient:
             raise HydraDBError(
                 f"{err.get('code', 'ERROR')}: {err.get('message', resp.text[:200])}"
             )
-        return body.get("data") or {}
+        return body
 
     def query(
         self,
@@ -90,26 +123,46 @@ class HydraDBClient:
         recency_bias: float = 0.0,
         graph_context: bool = True,
     ) -> list[HydraChunk]:
-        """Hybrid recall. ``kind`` is ``"memory"`` or ``"knowledge"``."""
+        """Recall chunks, preserving the existing list-returning API."""
+        return self.query_result(
+            query, kind, mode, max_results, alpha, recency_bias, graph_context
+        ).chunks
+
+    def query_result(
+        self,
+        query: str,
+        kind: str = "memory",
+        mode: str = "fast",
+        max_results: int = 6,
+        alpha: float = 0.8,
+        recency_bias: float = 0.0,
+        graph_context: bool = True,
+    ) -> HydraQueryResult:
+        """Recall with complete response data, including graph arrays and prompt."""
         payload = {
-            "tenant_id": self.tenant_id,
-            "sub_tenant_id": self.sub_tenant_id,
+            **self._scope,
             "query": query,
-            "type": kind,
             "mode": mode,
             "max_results": max_results,
             "alpha": alpha,
             "recency_bias": recency_bias,
             "graph_context": graph_context,
         }
+        if self.layout == "split":
+            payload["type"] = kind
         resp = self._session.post(
             f"{self.base_url}/query",
             headers={**self._auth_headers, "Content-Type": "application/json"},
             json=payload,
             timeout=self.timeout,
         )
-        data = self._unwrap(resp)
-        return [_to_chunk(c) for c in (data.get("chunks") or [])]
+        body = self._unwrap_envelope(resp)
+        data = body.get("data") or {}
+        return HydraQueryResult(
+            chunks=[_to_chunk(c) for c in (data.get("chunks") or [])],
+            data=data,
+            meta=body.get("meta") or {},
+        )
 
     def recall_prompt(
         self,
@@ -125,13 +178,13 @@ class HydraDBClient:
         recalled.
         """
         payload = {
-            "tenant_id": self.tenant_id,
-            "sub_tenant_id": self.sub_tenant_id,
+            **self._scope,
             "query": query,
-            "type": kind,
             "mode": mode,
             "max_results": max_results,
         }
+        if self.layout == "split":
+            payload["type"] = kind
         resp = self._session.post(
             f"{self.base_url}/query",
             headers={**self._auth_headers, "Content-Type": "application/json"},
@@ -140,7 +193,7 @@ class HydraDBClient:
         )
         data = self._unwrap(resp)
         prompt = data.get("llm_prompt")
-        if isinstance(prompt, str) and prompt.strip():
+        if isinstance(prompt, str):
             return prompt
         chunks = [_to_chunk(c) for c in (data.get("chunks") or [])]
         lines = [f"- {c.text}" for c in chunks if c.text]
@@ -153,6 +206,8 @@ class HydraDBClient:
         "infer"}``. Ingestion is asynchronous: a success here means the sources
         were accepted/queued, not yet indexed.
         """
+        if self.layout == "unified":
+            return self._ingest_context([_unified_item(item) for item in items])
         fields = {
             "tenant_id": (None, self.tenant_id),
             "sub_tenant_id": (None, self.sub_tenant_id),
@@ -163,6 +218,15 @@ class HydraDBClient:
             f"{self.base_url}/context/ingest",
             headers=self._auth_headers,
             files=fields,
+            timeout=self.timeout,
+        )
+        return self._unwrap(resp)
+
+    def _ingest_context(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        resp = self._session.post(
+            f"{self.base_url}/context/ingest",
+            headers={**self._auth_headers, "Content-Type": "application/json"},
+            json={**self._scope, "context": items},
             timeout=self.timeout,
         )
         return self._unwrap(resp)
@@ -188,7 +252,17 @@ class HydraDBClient:
     def add_conversation(
         self, user: str, assistant: str, infer: bool = True
     ) -> dict[str, Any]:
-        """Store a user/assistant turn as knowledge."""
+        """Store a turn as split knowledge or a unified conversation."""
+        if self.layout == "unified":
+            return self._ingest_context([{
+                "context_id": f"note-{uuid.uuid4().hex}",
+                "title": "conversation",
+                "conversation": [
+                    {"role": "user", "content": user},
+                    {"role": "assistant", "content": assistant},
+                ],
+                "enrich": infer,
+            }])
         return self.add_text(
             f"User: {user}\nAssistant: {assistant}", infer=infer, title="conversation"
         )
@@ -197,18 +271,37 @@ class HydraDBClient:
         ids = [i for i in (ids or []) if i]
         if not ids:
             return {"deleted_count": 0, "results": []}
+        payload: dict[str, Any] = {**self._scope, "ids": ids}
+        if self.layout == "split":
+            payload["type"] = kind
         resp = self._session.delete(
             f"{self.base_url}/context",
             headers={**self._auth_headers, "Content-Type": "application/json"},
-            json={
-                "tenant_id": self.tenant_id,
-                "sub_tenant_id": self.sub_tenant_id,
-                "ids": ids,
-                "type": kind,
-            },
+            json=payload,
             timeout=self.timeout,
         )
         return self._unwrap(resp)
+
+
+def _unified_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Translate the supported app_knowledge text shape without dropping fields."""
+    names = {
+        "id": "context_id", "title": "title", "infer": "enrich",
+        "metadata": "attributes", "additional_metadata": "custom_attributes",
+    }
+    unknown = set(item) - names.keys() - {"content"}
+    if unknown:
+        raise ValueError(f"Unsupported unified item fields: {', '.join(sorted(unknown))}")
+    content = item.get("content")
+    if not isinstance(content, dict) or set(content) != {"text"}:
+        raise ValueError("Unified knowledge items require content with only text")
+    if not isinstance(content["text"], str):
+        raise ValueError("Unified knowledge item text must be a string")
+    context = {names[key]: value for key, value in item.items() if key in names}
+    context["text"] = content["text"]
+    if not context.get("context_id"):
+        context["context_id"] = f"note-{uuid.uuid4().hex}"
+    return context
 
 
 def _to_chunk(raw: dict[str, Any]) -> HydraChunk:
@@ -219,6 +312,15 @@ def _to_chunk(raw: dict[str, Any]) -> HydraChunk:
     (mirrors the plugin's normalizeRetrievalResponse). Content that merely looks
     JSON-ish but does not parse is passed through untouched.
     """
+    if "chunk_id" in raw and "content" in raw:
+        return HydraChunk(
+            text=raw["content"],
+            score=raw.get("score"),
+            id=raw["chunk_id"],
+            context_id=raw.get("context_id", ""),
+            enrichment=raw.get("enrichment", ""),
+            received_at=raw.get("received_at", ""),
+        )
     raw_text = raw.get("chunk_content")
     if raw_text is None:
         raw_text = raw.get("text") or raw.get("content") or ""
