@@ -254,13 +254,17 @@ class HydraDBClient:
     ) -> dict[str, Any]:
         """Store a turn as split knowledge or a unified conversation."""
         if self.layout == "unified":
+            conversation = [
+                {"role": role, "content": content}
+                for role, content in (("user", user), ("assistant", assistant))
+                if content.strip()
+            ]
+            if not conversation:
+                raise ValueError("Unified conversation requires at least one nonblank turn")
             return self._ingest_context([{
                 "context_id": f"note-{uuid.uuid4().hex}",
                 "title": "conversation",
-                "conversation": [
-                    {"role": "user", "content": user},
-                    {"role": "assistant", "content": assistant},
-                ],
+                "conversation": conversation,
                 "enrich": infer,
             }])
         return self.add_text(

@@ -160,3 +160,66 @@ def test_failed_write_never_retries_another_layout(layout):
     assert len(responses.calls) == 1
     request = responses.calls[0].request
     assert ("application/json" in request.headers["Content-Type"]) == (layout == "unified")
+
+
+@pytest.mark.parametrize("user, assistant, expected", [
+    ("", "  answer\n", [{"role": "assistant", "content": "  answer\n"}]),
+    (" \t\n", "  answer\n", [{"role": "assistant", "content": "  answer\n"}]),
+    ("  question\n", "", [{"role": "user", "content": "  question\n"}]),
+    ("  question\n", " \t\n", [{"role": "user", "content": "  question\n"}]),
+    ("  question\n", "  answer\n", [
+        {"role": "user", "content": "  question\n"},
+        {"role": "assistant", "content": "  answer\n"},
+    ]),
+])
+@responses.activate
+def test_unified_conversation_omits_only_blank_counterparts(user, assistant, expected):
+    respond({"success_count": 1}, path="/context/ingest", status=202)
+    client(layout="unified").add_conversation(user, assistant, infer=False)
+    assert len(responses.calls) == 1
+    body = json.loads(responses.calls[0].request.body)
+    assert body["database"] == "db"
+    assert body["collection"] == "col"
+    assert "type" not in body and "kind" not in body
+    item = body["context"][0]
+    assert item["conversation"] == expected
+    assert item["enrich"] is False
+    assert item["title"] == "conversation"
+    assert item["context_id"].startswith("note-")
+    assert "text" not in item
+
+
+@pytest.mark.parametrize("user, assistant", [
+    ("", ""), (" \t", "\n"), ("", " \n"), (" \t", ""),
+])
+@responses.activate
+def test_unified_conversation_rejects_both_blank_before_http(user, assistant):
+    with pytest.raises(ValueError, match="conversation"):
+        client(layout="unified").add_conversation(user, assistant)
+    assert not responses.calls
+
+
+@pytest.mark.parametrize("layout", [None, "split"])
+@pytest.mark.parametrize("user, assistant", [
+    ("", "  answer\n"), ("  question\n", ""), (" \t", "\n"),
+])
+@responses.activate
+def test_split_conversation_keeps_exact_transcript_for_blank_counterparts(layout, user, assistant):
+    from email import message_from_bytes
+
+    respond({"success_count": 1}, path="/context/ingest", status=202)
+    c = client() if layout is None else client(layout=layout)
+    c.add_conversation(user, assistant, infer=False)
+    assert len(responses.calls) == 1
+    request = responses.calls[0].request
+    message = message_from_bytes(
+        b"Content-Type: " + request.headers["Content-Type"].encode() + b"\r\n\r\n" + request.body
+    )
+    fields = {
+        part.get_param("name", header="content-disposition"): part.get_payload(decode=True)
+        for part in message.walk() if part.get_content_disposition() == "form-data"
+    }
+    item = json.loads(fields["app_knowledge"])[0]
+    assert item["content"]["text"] == f"User: {user}\nAssistant: {assistant}"
+    assert item["infer"] is False
+    assert fields["type"] == b"knowledge"

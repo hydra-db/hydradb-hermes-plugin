@@ -55,3 +55,31 @@ def test_sync_turn_keeps_nonblocking_host_contract_with_unified_write():
     assert done.wait(2)
     item = captured[0]["context"][0]
     assert item["conversation"] == [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "answer"}]
+
+
+@pytest.mark.parametrize("user, assistant, expected", [
+    ("", "  answer\n", [{"role": "assistant", "content": "  answer\n"}]),
+    ("  question\n", "", [{"role": "user", "content": "  question\n"}]),
+])
+@responses.activate
+def test_sync_turn_persists_one_sided_unified_conversation_off_thread(user, assistant, expected):
+    done = threading.Event()
+    captured = []
+    worker_ids = []
+    caller_id = threading.get_ident()
+
+    def acknowledge(request):
+        captured.append(json.loads(request.body))
+        worker_ids.append(threading.get_ident())
+        done.set()
+        return 202, {}, json.dumps({"success": True, "data": {"success_count": 1}})
+
+    responses.add_callback(responses.POST, BASE + "/context/ingest", callback=acknowledge)
+    provider = HydraDBMemoryProvider(HydraDBClient("k", "db", layout="unified"))
+    assert provider.sync_turn(user, assistant, session_id="s") is None
+    assert done.wait(2)
+    assert worker_ids[0] != caller_id
+    item = captured[0]["context"][0]
+    assert item["conversation"] == expected
+    assert item["enrich"] is False
+    assert item["context_id"].startswith("note-")
