@@ -193,7 +193,7 @@ class HydraDBClient:
         )
         data = self._unwrap(resp)
         prompt = data.get("llm_prompt")
-        if isinstance(prompt, str):
+        if isinstance(prompt, str) and (self.layout == "unified" or prompt.strip()):
             return prompt
         chunks = [_to_chunk(c) for c in (data.get("chunks") or [])]
         lines = [f"- {c.text}" for c in chunks if c.text]

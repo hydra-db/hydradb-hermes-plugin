@@ -21,6 +21,16 @@ def test_prefetch_injects_provided_prompt_verbatim(prompt):
     assert "type" not in json.loads(responses.calls[0].request.body)
 
 
+@pytest.mark.parametrize("prompt", [" \n", ""])
+@responses.activate
+def test_split_recall_falls_back_to_chunks_on_empty_prompt(prompt):
+    responses.add(responses.POST, BASE + "/query", json={
+        "success": True, "data": {"llm_prompt": prompt, "chunks": [{"content": "fallback body", "chunk_id": "c", "context_id": "s"}]},
+    })
+    provider = HydraDBMemoryProvider(HydraDBClient("k", "db", layout="split"))
+    assert provider.prefetch("question") == "Relevant HydraDB memory:\n- fallback body"
+
+
 def test_provider_configures_explicit_layout(monkeypatch):
     monkeypatch.setenv("HYDRADB_API_KEY", "k")
     monkeypatch.setenv("HYDRADB_DATABASE", "db")
