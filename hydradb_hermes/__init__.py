@@ -62,6 +62,7 @@ class HydraDBMemoryProvider(_BaseMemoryProvider):
                 tenant_id=_env("HYDRADB_DATABASE"),
                 sub_tenant_id=_env("HYDRADB_COLLECTION"),
                 base_url=os.environ.get("HYDRADB_BASE_URL", "https://api.hydradb.com"),
+                layout=os.environ.get("HYDRADB_LAYOUT", "split"),
             )
 
     def get_config_schema(self):
@@ -73,6 +74,7 @@ class HydraDBMemoryProvider(_BaseMemoryProvider):
             {"key": "api_key", "env_var": "HYDRADB_API_KEY", "secret": True, "required": True},
             {"key": "database", "env_var": "HYDRADB_DATABASE", "required": True},
             {"key": "collection", "env_var": "HYDRADB_COLLECTION", "required": False},
+            {"key": "layout", "env_var": "HYDRADB_LAYOUT", "required": False},
         ]
 
     def get_tool_schemas(self):
